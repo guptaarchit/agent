@@ -1,0 +1,84 @@
+🧠 1. Full agent frameworks with MCP + memory/session support
+Goose (Block’s open-source agent framework)
+One of the most complete open-source stacks right now
+Native MCP integration
+Built-in:
+Memory management (short + long-term context)
+Multi-turn sessions
+Tool orchestration
+Extensible plugin/tool system
+
+👉 This is one of the few frameworks explicitly designed to combine:
+
+agent orchestration
+MCP tools
+persistent context
+
+Microsoft Agent Framework (open-source)
+Strong MCP support (first-class concept)
+Supports:
+Multiple MCP tools per agent
+Tool discovery via MCP
+Good for structured enterprise workflows
+
+⚠️ Caveat:
+
+Session/memory handling is not opinionated — you usually wire it yourself (e.g., storage layer, Redis, etc.)
+
+OpenClaw (autonomous agent runtime)
+Fully open-source autonomous agent
+Has:
+Persistent memory (filesystem-based)
+Session-style execution via “gateway”
+Tool definitions via config files
+Can integrate external tools (including MCP-style setups)
+
+👉 More “agent OS” than framework, but useful if you want:
+
+long-running sessions
+real task execution
+
+🔧 2. MCP-native / MCP-first tooling frameworks
+mcp-agent (MCP Stack)
+Lightweight framework specifically for MCP agents
+Lets you:
+Define custom tools programmatically
+Attach resources (DBs, APIs)
+Configure memory systems (hybrid/working memory)
+
+👉 Very close to what you asked for (custom tools + memory)
+
+ACI.dev (tool-calling platform)
+Open-source MCP-compatible platform
+Connects hundreds of tools via MCP or function calling
+Focus: tool ecosystem, not full session lifecycle
+
+RAGFlow / Dify
+Production-grade agent platforms
+Support:
+tool calling
+workflows
+memory (via RAG / pipelines)
+MCP support is emerging or indirect
+
+🧩 3. Supporting layers (for session + robustness)
+Agent Lifecycle Toolkit (ALTK)
+Middleware for:
+validation
+lifecycle hooks
+tool-call safety
+Can be combined with MCP agents
+
+👉 Useful if you want production-grade session handling
+
+⚠️ Important reality check (very relevant to your question)
+
+Even though MCP standardizes tools, session + identity management is still weak across frameworks:
+
+No standard “agent identity” across sessions
+No built-in session tracking in MCP itself
+Most frameworks implement sessions ad hoc
+
+Example from real-world usage:
+
+“There’s no persistent identity for agents across sessions… every agent is basically a stranger.”
