@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>MCP Agent · Chat</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #171a21;
+    --panel-2: #1f2430;
+    --border: #2a3140;
+    --text: #e6e8ee;
+    --muted: #8a93a6;
+    --accent: #6aa6ff;
+    --accent-2: #4f86e5;
+    --user: #2a3a5e;
+    --assistant: #1e2430;
+    --error: #ff6b6b;
+    --success: #4ade80;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg); color: var(--text); height: 100vh; display: flex; flex-direction: column;
+  }
+  header {
+    background: var(--panel); border-bottom: 1px solid var(--border);
+    padding: 12px 20px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; }
+  header .spacer { flex: 1; }
+  .status { font-size: 12px; color: var(--muted); display: flex; gap: 6px; align-items: center; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+  .dot.ok { background: var(--success); }
+  .dot.err { background: var(--error); }
+  .controls {
+    display: flex; gap: 8px; padding: 12px 20px; background: var(--panel);
+    border-bottom: 1px solid var(--border); flex-wrap: wrap; align-items: center;
+  }
+  .controls label { font-size: 12px; color: var(--muted); }
+  .controls input[type="text"], .controls input[type="password"] {
+    background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    padding: 6px 10px; border-radius: 6px; font-size: 13px; font-family: ui-monospace, monospace;
+  }
+  .controls input#token { width: 320px; }
+  .controls input#session { width: 280px; }
+  button {
+    background: var(--accent-2); color: white; border: none; padding: 6px 12px;
+    border-radius: 6px; cursor: pointer; font-size: 13px;
+  }
+  button:hover { background: var(--accent); }
+  button.secondary { background: var(--panel-2); border: 1px solid var(--border); }
+  button.secondary:hover { background: var(--border); }
+  #messages {
+    flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 12px;
+  }
+  .msg { max-width: 75%; padding: 10px 14px; border-radius: 10px; line-height: 1.5; white-space: pre-wrap; word-wrap: break-word; }
+  .msg.user { align-self: flex-end; background: var(--user); }
+  .msg.assistant { align-self: flex-start; background: var(--assistant); border: 1px solid var(--border); }
+  .msg.error { align-self: center; background: rgba(255, 107, 107, 0.1); color: var(--error); border: 1px solid var(--error); font-size: 13px; }
+  .msg .role { font-size: 11px; color: var(--muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .typing { align-self: flex-start; color: var(--muted); font-style: italic; padding: 8px 14px; }
+  .typing::after { content: "▋"; animation: blink 1s infinite; margin-left: 2px; }
+  @keyframes blink { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0; } }
+  footer {
+    background: var(--panel); border-top: 1px solid var(--border); padding: 12px 20px;
+    display: flex; gap: 10px; align-items: flex-end;
+  }
+  #input {
+    flex: 1; background: var(--panel-2); color: var(--text); border: 1px solid var(--border);
+    padding: 10px 12px; border-radius: 8px; font-size: 14px; resize: none; min-height: 42px; max-height: 160px;
+    font-family: inherit;
+  }
+  #input:focus { outline: none; border-color: var(--accent); }
+  #send { padding: 10px 18px; height: 42px; }
+  #send:disabled { opacity: 0.5; cursor: not-allowed; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>🤖 MCP Agent</h1>
+    <div class="spacer"></div>
+    <div class="status"><span class="dot" id="healthDot"></span><span id="healthText">checking…</span></div>
+  </header>
+
+  <div class="controls">
+    <label for="token">Bearer token</label>
+    <input type="password" id="token" placeholder="paste your auth token" />
+    <label for="session">Session</label>
+    <input type="text" id="session" placeholder="auto-generated on first message" readonly />
+    <button class="secondary" id="newSession">New session</button>
+    <button class="secondary" id="loadHistory">Load history</button>
+  </div>
+
+  <div id="messages"></div>
+
+  <footer>
+    <textarea id="input" placeholder="Ask something… (Enter to send, Shift+Enter for newline)" rows="1"></textarea>
+    <button id="send">Send</button>
+  </footer>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const messagesEl = $("messages");
+  const inputEl = $("input");
+  const sendBtn = $("send");
+  const tokenEl = $("token");
+  const sessionEl = $("session");
+
+  // Persist token + session across reloads
+  tokenEl.value = localStorage.getItem("token") || "";
+  sessionEl.value = localStorage.getItem("session") || "";
+  tokenEl.addEventListener("input", () => localStorage.setItem("token", tokenEl.value));
+
+  function appendMessage(role, content) {
+    const div = document.createElement("div");
+    div.className = `msg ${role}`;
+    const roleLabel = document.createElement("div");
+    roleLabel.className = "role";
+    roleLabel.textContent = role;
+    const body = document.createElement("div");
+    body.textContent = content;
+    div.appendChild(roleLabel);
+    div.appendChild(body);
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return div;
+  }
+
+  function appendError(text) {
+    const div = document.createElement("div");
+    div.className = "msg error";
+    div.textContent = text;
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  function appendTyping() {
+    const div = document.createElement("div");
+    div.className = "typing";
+    div.textContent = "Agent is thinking";
+    div.id = "typing";
+    messagesEl.appendChild(div);
+    messagesEl.scrollTop = messagesEl.scrollHeight;
+    return div;
+  }
+
+  function removeTyping() {
+    const t = document.getElementById("typing");
+    if (t) t.remove();
+  }
+
+  async function checkHealth() {
+    try {
+      const res = await fetch("/health");
+      if (res.ok) {
+        const data = await res.json();
+        $("healthDot").className = "dot ok";
+        $("healthText").textContent = `online · ${data.environment}`;
+      } else throw new Error("bad status");
+    } catch {
+      $("healthDot").className = "dot err";
+      $("healthText").textContent = "offline";
+    }
+  }
+
+  async function sendMessage() {
+    const text = inputEl.value.trim();
+    if (!text) return;
+    if (!tokenEl.value.trim()) {
+      appendError("Please enter a bearer token first.");
+      return;
+    }
+
+    appendMessage("user", text);
+    inputEl.value = "";
+    inputEl.style.height = "auto";
+    sendBtn.disabled = true;
+    const typingEl = appendTyping();
+
+    try {
+      const body = { message: text };
+      if (sessionEl.value) body.session_id = sessionEl.value;
+
+      const res = await fetch("/chat", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": tokenEl.value.startsWith("Bearer ") ? tokenEl.value : `Bearer ${tokenEl.value}`,
+        },
+        body: JSON.stringify(body),
+      });
+
+      removeTyping();
+
+      if (!res.ok) {
+        const errText = await res.text();
+        appendError(`Error ${res.status}: ${errText}`);
+        return;
+      }
+
+      const data = await res.json();
+      sessionEl.value = data.session_id;
+      localStorage.setItem("session", data.session_id);
+      appendMessage("assistant", data.answer);
+    } catch (e) {
+      removeTyping();
+      appendError(`Request failed: ${e.message}`);
+    } finally {
+      sendBtn.disabled = false;
+      inputEl.focus();
+    }
+  }
+
+  async function loadHistory() {
+    if (!sessionEl.value) {
+      appendError("No session id yet.");
+      return;
+    }
+    if (!tokenEl.value.trim()) {
+      appendError("Please enter a bearer token first.");
+      return;
+    }
+    try {
+      const res = await fetch(`/sessions/${sessionEl.value}/history`, {
+        headers: {
+          "Authorization": tokenEl.value.startsWith("Bearer ") ? tokenEl.value : `Bearer ${tokenEl.value}`,
+        },
+      });
+      if (!res.ok) {
+        appendError(`Failed to load history: ${res.status}`);
+        return;
+      }
+      const data = await res.json();
+      messagesEl.innerHTML = "";
+      for (const m of data.messages) {
+        const role = m.role === "human" ? "user" : m.role === "ai" ? "assistant" : m.role;
+        if (m.content) appendMessage(role, m.content);
+      }
+    } catch (e) {
+      appendError(`Failed to load history: ${e.message}`);
+    }
+  }
+
+  $("newSession").addEventListener("click", () => {
+    sessionEl.value = "";
+    localStorage.removeItem("session");
+    messagesEl.innerHTML = "";
+  });
+
+  $("loadHistory").addEventListener("click", loadHistory);
+  sendBtn.addEventListener("click", sendMessage);
+
+  inputEl.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      sendMessage();
+    }
+  });
+
+  inputEl.addEventListener("input", () => {
+    inputEl.style.height = "auto";
+    inputEl.style.height = Math.min(inputEl.scrollHeight, 160) + "px";
+  });
+
+  checkHealth();
+</script>
+</body>
+</html>
